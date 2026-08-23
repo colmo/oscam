@@ -503,7 +503,8 @@ td[class*="readercol"] {	/* shorthand notation td[class*='readercol'] for  td.re
 td.statuscol0 {
 	width:10px
 }
-td.statuscol1 {
+td.statuscol1,
+td.statuscol2 {
 	width:0
 }
 .usercol1 img{

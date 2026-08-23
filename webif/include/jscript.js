@@ -1038,7 +1038,7 @@ function addremoveSubheadline(remove, data, container, subheadline, type) {
 
 	if (remove == 0 && !$("#" + subheadline).length) {
 		$(container).removeAttr('style');
-		var strheadline = '<TR id="' + subheadline + '"><TD CLASS="subheadline" COLSPAN="12">';
+		var strheadline = '<TR id="' + subheadline + '"><TD CLASS="subheadline" COLSPAN="13">';
 		if (type == 'c') {
 			if (data.oscam.status.ucac != '') { //hide idle clients
 				strheadline += '<P id="chead">Clients <span id="ucs">' + data.oscam.status.ucs + '</span>/<span id="uca">' + data.oscam.status.uca + '</span> (<span id="ucac">' + data.oscam.status.ucac + '</span> with ECM within last <span id="cfgh">' + data.oscam.status.cfgh + '</span> seconds)</P>'
@@ -1113,7 +1113,7 @@ function updateStatuspage(data) {
 
 		if (!$(uid).length && 'rpcxm'.indexOf(item.type) > (-1)) {
 			//build new row
-			var rowcontent = '<TR ID="' + item.thid + '"><TD CLASS="statuscol0"/><TD CLASS="statuscol1"/><TD CLASS="statuscol4"/>';
+			var rowcontent = '<TR ID="' + item.thid + '"><TD CLASS="statuscol0"/><TD CLASS="statuscol1"/><TD CLASS="statuscol2"/><TD CLASS="statuscol4"/>';
 			rowcontent += '<TD CLASS="statuscol5"/><TD CLASS="statuscol7"/><TD CLASS="statuscol8"/><TD CLASS="statuscol9"/>';
 			rowcontent += '<TD CLASS="statuscol12"/><TD CLASS="statuscol13"/><TD CLASS="statuscol14"/><TD CLASS="statuscol15"/>';
 			rowcontent += '<TD CLASS="statuscol16"/></TR>';
@@ -1180,12 +1180,13 @@ function updateStatuspage(data) {
 					name1 + ': ' + name3 + (item.desc ? '\n' + item.desc.replace('&#13;', '') : '') +
 					kill1 + '"><img class="icon" alt="' + kill2 +
 					'" src="image?i=' + kill3 + '">');
-				if ((item.type == 'c' || item.type == 'm') && data.oscam.sleepenabled == "1") {
-					$(uid + " > td.statuscol1").append('<a title="Sleep ' +
-						name1 + ': ' + name3 + (item.desc ? '\n' + item.desc.replace('&#13;', '') : '') +
-						'" href="status.html?action=sleep&threadid=' + item.thid.substring(3, item.thid.length) +
-						'"><img class="icon" alt="Sleep" src="image?i=ICSLEE">');
-				}
+			}
+
+			if (!is_nopoll('statuscol2') && (item.type == 'c' || item.type == 'm') && data.oscam.sleepenabled == "1") {
+				$(uid + " > td.statuscol2").append('<a title="Sleep ' +
+					name1 + ': ' + name3 + (item.desc ? '\n' + item.desc.replace('&#13;', '') : '') +
+					'" href="status.html?action=sleep&threadid=' + item.thid.substring(3, item.thid.length) +
+					'"><img class="icon" alt="Sleep" src="image?i=ICSLEE">');
 			}
 
 			if (!is_nopoll('statuscol4')) {

@@ -5858,11 +5858,11 @@ static void *webif_sleep_thread(void *arg)
 
 	if(webif_http_get(job->dest_ip, job->port, job->path) == 0)
 	{
-		cs_log("Sleep zap sent to %s (%s) by WebIF from %s", job->usr, dest, from);
+		cs_log("Client %s sleep zap sent to %s by WebIF from %s", job->usr, dest, from);
 	}
 	else
 	{
-		cs_log("Sleep zap to %s (%s) failed (WebIF from %s)", job->usr, dest, from);
+		cs_log("Client %s sleep zap to %s failed (WebIF from %s)", job->usr, dest, from);
 	}
 
 	NULLFREE(job->path);
@@ -5893,8 +5893,17 @@ static void webif_sleep_start(struct s_client *cl)
 		return;
 	}
 
+	{
+		char dest[INET6_ADDRSTRLEN];
+		char from[INET6_ADDRSTRLEN];
+		cs_strncpy(dest, cs_inet_ntoa(job->dest_ip), sizeof(dest));
+		cs_strncpy(from, cs_inet_ntoa(job->from_ip), sizeof(from));
+		cs_log("Client %s sleep zap requested to %s by WebIF from %s", job->usr, dest, from);
+	}
+
 	if(start_thread("webif sleep zap", webif_sleep_thread, (void *)job, NULL, 1, 1) != 0)
 	{
+		cs_log("Client %s sleep zap failed to start (WebIF from %s)", job->usr, cs_inet_ntoa(job->from_ip));
 		NULLFREE(job->path);
 		NULLFREE(job);
 	}
@@ -6237,12 +6246,13 @@ static char *send_oscam_status(struct templatevars * vars, struct uriparams * pa
 					{
 						tpl_addVar(vars, TPLADD, "LBL", xml_encode(vars, usr));
 						tpl_printf(vars, TPLADD, "CID", "%p", cl);
+						tpl_addVar(vars, TPLADD, "SLEEPIDX", "");
 						if(cl->typ == 'c' || cl->typ == 'm')
 						{
 							tpl_addVar(vars, TPLADD, "TARGET", "User");
 							tpl_addVar(vars, TPLADD, "CSIDX", tpl_getTpl(vars, "STATUSKBUTTON"));
 							if(webif_sleep_zap_enabled() && !(cl->account && is_dvbapi_usr(cl->account->usr)))
-								{ tpl_addVar(vars, TPLAPPEND, "CSIDX", tpl_getTpl(vars, "STATUSSBUTTON")); }
+								{ tpl_addVar(vars, TPLADD, "SLEEPIDX", tpl_getTpl(vars, "STATUSSBUTTON")); }
 						}
 						else if(cl->typ == 'p')
 						{
