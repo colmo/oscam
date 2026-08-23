@@ -11,6 +11,7 @@
     "curtime": "##CURTIME##",
     "readonly": "##APIREADONLY##",
     "piconenabled":"##PICONENABLED##",
+    "sleepenabled":"##SLEEPENABLED##",
     "srvidfile":"##SRVIDFILE##",
     "lbdefined":"##LBISDEFINED##",
     "failbannotifier":"##FAILBANNOTIFIERPOLL##",

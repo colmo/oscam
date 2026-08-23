@@ -1572,6 +1572,8 @@ static char *send_oscam_config_webif(struct templatevars *vars, struct uriparams
 	tpl_printf(vars, TPLADD, "HTTPPOLLREFRESH", "%d", cfg.poll_refresh);
 	tpl_addVar(vars, TPLADD, "HTTPTPL", cfg.http_tpl);
 	tpl_addVar(vars, TPLADD, "HTTPPICONPATH", cfg.http_piconpath);
+	tpl_printf(vars, TPLADD, "HTTPSLEEPPORT", "%d", cfg.http_sleep_port > 0 && cfg.http_sleep_port <= 65535 ? cfg.http_sleep_port : 80);
+	tpl_addVar(vars, TPLADD, "HTTPSLEEPZAP", cfg.http_sleep_zap ? cfg.http_sleep_zap : "");
 	tpl_addVar(vars, TPLADD, "HTTPSCRIPT", cfg.http_script);
 	tpl_addVar(vars, TPLADD, "HTTPJSCRIPT", cfg.http_jscript);
 #ifndef WEBIF_JQUERY
@@ -5689,6 +5691,215 @@ static char *send_oscam_logpoll(struct templatevars * vars, struct uriparams * p
 }
 #endif
 
+#define WEBIF_SLEEP_TIMEOUT 5
+
+static int32_t webif_sleep_zap_enabled(void)
+{
+	return (cfg.http_sleep_zap && cfg.http_sleep_zap[0]);
+}
+
+static int32_t webif_sleep_port(void)
+{
+	if(cfg.http_sleep_port > 0 && cfg.http_sleep_port <= 65535)
+		{ return cfg.http_sleep_port; }
+	return 80;
+}
+
+static int32_t webif_http_path_ok(const char *path)
+{
+	size_t i;
+
+	if(!path || !path[0])
+		{ return 0; }
+
+	for(i = 0; path[i]; i++)
+	{
+		if(path[i] == '\r' || path[i] == '\n')
+			{ return 0; }
+	}
+	return 1;
+}
+
+static int32_t webif_http_get(IN_ADDR_T ip, int32_t port, const char *path)
+{
+	struct sockaddr_storage sa;
+	socklen_t sa_len;
+	int s_domain = PF_INET;
+	int fd = -1;
+	char *req = NULL;
+	int32_t ret = -1;
+	char host[INET6_ADDRSTRLEN + 8];
+
+	if(!webif_http_path_ok(path) || port <= 0 || port > 65535 || !IP_ISSET(ip))
+		{ return -1; }
+
+	memset(&sa, 0, sizeof(sa));
+
+#ifdef IPV6SUPPORT
+	if(!IN6_IS_ADDR_V4MAPPED(&ip) && !IN6_IS_ADDR_V4COMPAT(&ip))
+	{
+		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&sa;
+		s_domain = PF_INET6;
+		sin6->sin6_family = AF_INET6;
+		sin6->sin6_port = htons((uint16_t)port);
+		sin6->sin6_addr = ip;
+		sa_len = sizeof(struct sockaddr_in6);
+		snprintf(host, sizeof(host), "[%s]", cs_inet_ntoa(ip));
+	}
+	else
+#endif
+	{
+		struct sockaddr_in *sin = (struct sockaddr_in *)&sa;
+		sin->sin_family = AF_INET;
+		sin->sin_port = htons((uint16_t)port);
+#ifdef IPV6SUPPORT
+		memcpy(&sin->sin_addr.s_addr, &ip.s6_addr[12], 4);
+#else
+		sin->sin_addr.s_addr = ip;
+#endif
+		sa_len = sizeof(struct sockaddr_in);
+		cs_strncpy(host, cs_inet_ntoa(ip), sizeof(host));
+	}
+
+	if((fd = socket(s_domain, SOCK_STREAM, IPPROTO_TCP)) < 0)
+		{ return -1; }
+
+	set_socket_priority(fd, cfg.netprio);
+	set_nonblock(fd, true);
+
+	if(connect(fd, (struct sockaddr *)&sa, sa_len) == -1)
+	{
+		if(errno == EINPROGRESS || errno == EALREADY || errno == EAGAIN)
+		{
+			struct pollfd pfd;
+			pfd.fd = fd;
+			pfd.events = POLLOUT;
+			if(poll(&pfd, 1, WEBIF_SLEEP_TIMEOUT * 1000) <= 0
+				|| (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)))
+			{
+				goto out;
+			}
+			else
+			{
+				int err = 0;
+				socklen_t l = sizeof(err);
+				if(getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &l) != 0 || err != 0)
+					{ goto out; }
+			}
+		}
+		else
+		{
+			goto out;
+		}
+	}
+
+	set_nonblock(fd, false);
+
+	{
+		size_t req_size = cs_strlen(path) + cs_strlen(host) + 64;
+		int32_t req_len;
+		const char *fmt;
+
+		if(!cs_malloc(&req, req_size))
+			{ goto out; }
+
+		fmt = (path[0] == '/')
+			? "GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n"
+			: "GET /%s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n";
+		req_len = snprintf(req, req_size, fmt, path, host);
+		if(req_len <= 0 || req_len >= (int32_t)req_size)
+			{ goto out; }
+
+		{
+			struct timeval tv;
+			tv.tv_sec = WEBIF_SLEEP_TIMEOUT;
+			tv.tv_usec = 0;
+			setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+			setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+		}
+
+		if((int32_t)send(fd, req, req_len, 0) != req_len)
+			{ goto out; }
+	}
+
+	{
+		char buf[256];
+		int32_t n, loops = 0;
+		while(loops++ < 256 && (n = recv(fd, buf, sizeof(buf), 0)) > 0)
+			{ ; }
+	}
+
+	ret = 0;
+
+out:
+	if(fd >= 0)
+		{ close(fd); }
+	NULLFREE(req);
+	return ret;
+}
+
+struct webif_sleep_job
+{
+	IN_ADDR_T dest_ip;
+	IN_ADDR_T from_ip;
+	int32_t port;
+	char usr[64];
+	char *path;
+};
+
+static void *webif_sleep_thread(void *arg)
+{
+	struct webif_sleep_job *job = (struct webif_sleep_job *)arg;
+	char dest[INET6_ADDRSTRLEN];
+	char from[INET6_ADDRSTRLEN];
+
+	cs_strncpy(dest, cs_inet_ntoa(job->dest_ip), sizeof(dest));
+	cs_strncpy(from, cs_inet_ntoa(job->from_ip), sizeof(from));
+
+	if(webif_http_get(job->dest_ip, job->port, job->path) == 0)
+	{
+		cs_log("Sleep zap sent to %s (%s) by WebIF from %s", job->usr, dest, from);
+	}
+	else
+	{
+		cs_log("Sleep zap to %s (%s) failed (WebIF from %s)", job->usr, dest, from);
+	}
+
+	NULLFREE(job->path);
+	NULLFREE(job);
+	return NULL;
+}
+
+static void webif_sleep_start(struct s_client *cl)
+{
+	struct webif_sleep_job *job;
+	IN_ADDR_T from_ip;
+
+	if(!cl || !webif_sleep_zap_enabled() || !IP_ISSET(cl->ip) || !webif_http_path_ok(cfg.http_sleep_zap))
+		{ return; }
+
+	if(!cs_malloc(&job, sizeof(struct webif_sleep_job)))
+		{ return; }
+
+	job->dest_ip = cl->ip;
+	from_ip = GET_IP();
+	job->from_ip = from_ip;
+	job->port = webif_sleep_port();
+	cs_strncpy(job->usr, (cl->account && cl->account->usr[0]) ? cl->account->usr : "-", sizeof(job->usr));
+	job->path = cs_strdup(cfg.http_sleep_zap);
+	if(!job->path)
+	{
+		NULLFREE(job);
+		return;
+	}
+
+	if(start_thread("webif sleep zap", webif_sleep_thread, (void *)job, NULL, 1, 1) != 0)
+	{
+		NULLFREE(job->path);
+		NULLFREE(job);
+	}
+}
+
 static char *send_oscam_status(struct templatevars * vars, struct uriparams * params, int32_t apicall)
 {
 	const char *usr;
@@ -5721,6 +5932,20 @@ static char *send_oscam_status(struct templatevars * vars, struct uriparams * pa
 				kill_thread(cl);
 				cs_log("Client %s killed by WebIF from %s", cl->account->usr, cs_inet_ntoa(GET_IP()));
 			}
+		}
+	}
+
+	if(strcmp(getParam(params, "action"), "sleep") == 0)
+	{
+		char *cptr = getParam(params, "threadid");
+		struct s_client *cl = NULL;
+		if(cs_strlen(cptr) > 1)
+			{ sscanf(cptr, "%p", (void **)(void *)&cl); }
+
+		if(cl && is_valid_client(cl) && (cl->typ == 'c' || cl->typ == 'm')
+			&& !(cl->account && is_dvbapi_usr(cl->account->usr)))
+		{
+			webif_sleep_start(cl);
 		}
 	}
 
@@ -6016,6 +6241,8 @@ static char *send_oscam_status(struct templatevars * vars, struct uriparams * pa
 						{
 							tpl_addVar(vars, TPLADD, "TARGET", "User");
 							tpl_addVar(vars, TPLADD, "CSIDX", tpl_getTpl(vars, "STATUSKBUTTON"));
+							if(webif_sleep_zap_enabled() && !(cl->account && is_dvbapi_usr(cl->account->usr)))
+								{ tpl_addVar(vars, TPLAPPEND, "CSIDX", tpl_getTpl(vars, "STATUSSBUTTON")); }
 						}
 						else if(cl->typ == 'p')
 						{
@@ -6894,6 +7121,7 @@ static char *send_oscam_status(struct templatevars * vars, struct uriparams * pa
 			tpl_printf(vars, TPLADD, "PCO", "%d", proxy_count_off);
 			tpl_printf(vars, TPLADD, "PCA", "%d", proxy_count_all);
 			tpl_printf(vars, TPLADD, "PICONENABLED", "%d", cfg.http_showpicons?1:0);
+			tpl_printf(vars, TPLADD, "SLEEPENABLED", "%d", webif_sleep_zap_enabled() ? 1 : 0);
 			tpl_printf(vars, TPLADD, "SRVIDFILE", "%s", use_srvid2 ? "oscam.srvid2" : "oscam.srvid");
 			return tpl_getTpl(vars, "JSONSTATUS");
 		}

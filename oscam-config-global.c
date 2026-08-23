@@ -616,6 +616,8 @@ static const struct config_list webif_opts[] =
 	DEF_OPT_INT32("httpemmuclean"           , OFS(http_emmu_clean)          , 256),
 	DEF_OPT_INT32("httpemmsclean"           , OFS(http_emms_clean)          , -1),
 	DEF_OPT_INT32("httpemmgclean"           , OFS(http_emmg_clean)          , -1),
+	DEF_OPT_INT32("httpsleepport"           , OFS(http_sleep_port)          , 80),
+	DEF_OPT_STR("httpsleepzap"              , OFS(http_sleep_zap)           , "/api/zap?sRef=1%3A0%3A1%3A759C%3A422%3A1%3AC00000%3A0%3A0%3A0%3A"),
 #ifdef WEBIF_LIVELOG
 	DEF_OPT_INT8("http_status_log"          , OFS(http_status_log)          , 0),
 #else

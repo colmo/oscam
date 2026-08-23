@@ -1180,6 +1180,12 @@ function updateStatuspage(data) {
 					name1 + ': ' + name3 + (item.desc ? '\n' + item.desc.replace('&#13;', '') : '') +
 					kill1 + '"><img class="icon" alt="' + kill2 +
 					'" src="image?i=' + kill3 + '">');
+				if ((item.type == 'c' || item.type == 'm') && data.oscam.sleepenabled == "1") {
+					$(uid + " > td.statuscol1").append('<a title="Sleep ' +
+						name1 + ': ' + name3 + (item.desc ? '\n' + item.desc.replace('&#13;', '') : '') +
+						'" href="status.html?action=sleep&threadid=' + item.thid.substring(3, item.thid.length) +
+						'"><img class="icon" alt="Sleep" src="image?i=ICSLEE">');
+				}
 			}
 
 			if (!is_nopoll('statuscol4')) {

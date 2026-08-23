@@ -148,6 +148,7 @@ ICENA                         images/ICENA.svg
 ICENT                         images/ICENT.svg
 ICHID                         images/ICHID.svg
 ICKIL                         images/ICKIL.svg
+ICSLEE                        images/ICSLEE.svg
 LOGOBITSVG                    images/ICMLOGO.svg
 ICREF                         images/ICREF.svg
 ICRES                         images/ICRES.svg
@@ -289,6 +290,7 @@ CLIENTCURRENTCHANNELPIC       status/status_currentchannelpic.html
 STATUSHEADLINE                status/status_headline.html
 STATUSHBUTTON                 status/status_hidebutton.html
 STATUSKBUTTON                 status/status_killbutton.html
+STATUSSBUTTON                 status/status_sleepbutton.html
 CLIENTLBLVALUEBIT             status/status_lblvaluereaderbit.html                        WITH_LB
 CLIENTLBLVALUERP              status/status_lbvaluereaderproxy.html                       WITH_LB
 LOGHISTORYBIT                 status/status_loghistory.html
