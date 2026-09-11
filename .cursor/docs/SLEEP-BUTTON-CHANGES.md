@@ -446,7 +446,7 @@ Checklist:
 
 - Destino = IP del cliente OSCam. Si el deco NAT/VPN no coincide con esa IP, el zap fallará.
 - Puerto OpenWebif por defecto 80; si usa 8080, poner `httpsleepport = 8080`.
-- Sin autenticación HTTP hacia OpenWebif.
+- Autenticación OpenWebif opcional por cuenta (`owifuser` / `owifpwd` en `oscam.user`): HTTP Basic. Vacío = sin cabecera `Authorization`.
 - Un intento (no reintenta 3 veces como `wget -t 3`).
 - La petición se hace en el hilo de la WebIF (hasta 5 s de bloqueo).
 - No aplica a dvbapi local, readers ni proxies.

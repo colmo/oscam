@@ -473,6 +473,8 @@ static const struct config_list account_opts[] =
 	DEF_OPT_STR("pwd"                          , OFS(pwd),                     NULL),
 #ifdef WEBIF
 	DEF_OPT_STR("description"                  , OFS(description),             NULL),
+	DEF_OPT_STR("owifuser"                     , OFS(owifuser),                NULL),
+	DEF_OPT_STR("owifpwd"                      , OFS(owifpwd),                 NULL),
 #endif
 	DEF_OPT_STR("hostname"                     , OFS(dyndns),                  NULL),
 	DEF_OPT_FUNC("caid"                        , OFS(ctab),                    check_caidtab_fn),

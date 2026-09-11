@@ -26,6 +26,12 @@ DESCRIPTIONS
        hostname = hostname
 	  host from which user connection is allowed
 
+       owifuser = username
+	  OpenWebif HTTP Basic username for the Status Sleep zap, default:none
+
+       owifpwd = password
+	  OpenWebif HTTP Basic password for the Status Sleep zap, default:none
+
        expdate = <year>-<month>-<day>|<year>/<month>/<day>
 	  expiration date for account, default:none
 

@@ -9,6 +9,8 @@
 		<allowedtimeframe>##ALLOWEDTIMEFRAME##</allowedtimeframe>
 		<group>##GROUPS##</group>
 		<hostname>##DYNDNS##</hostname>
+		<owifuser>##OWIFUSER##</owifuser>
+		<owifpwd>##OWIFPWD##</owifpwd>
 		<uniq>##UNIQVALUE##</uniq>
 		<sleep>##SLEEP##</sleep>
 		<monlevel>##MONVALUE##</monlevel>

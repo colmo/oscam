@@ -3838,6 +3838,8 @@ static char *send_oscam_user_config_edit(struct templatevars *vars, struct uripa
 	tpl_addVar(vars, TPLADD, "USERNAME", xml_encode(vars, account->usr));
 	tpl_addVar(vars, TPLADD, "PASSWORD", xml_encode(vars, account->pwd));
 	tpl_addVar(vars, TPLADD, "DESCRIPTION", xml_encode(vars, account->description));
+	tpl_addVar(vars, TPLADD, "OWIFUSER", xml_encode(vars, account->owifuser));
+	tpl_addVar(vars, TPLADD, "OWIFPWD", xml_encode(vars, account->owifpwd));
 
 	//Disabled
 	if(!apicall)
@@ -5705,22 +5707,27 @@ static int32_t webif_sleep_port(void)
 	return 80;
 }
 
-static int32_t webif_http_path_ok(const char *path)
+static int32_t webif_http_no_crlf(const char *s)
 {
 	size_t i;
 
-	if(!path || !path[0])
-		{ return 0; }
+	if(!s)
+		{ return 1; }
 
-	for(i = 0; path[i]; i++)
+	for(i = 0; s[i]; i++)
 	{
-		if(path[i] == '\r' || path[i] == '\n')
+		if(s[i] == '\r' || s[i] == '\n')
 			{ return 0; }
 	}
 	return 1;
 }
 
-static int32_t webif_http_get(IN_ADDR_T ip, int32_t port, const char *path)
+static int32_t webif_http_path_ok(const char *path)
+{
+	return (path && path[0] && webif_http_no_crlf(path));
+}
+
+static int32_t webif_http_get(IN_ADDR_T ip, int32_t port, const char *path, const char *auth_user, const char *auth_pwd)
 {
 	struct sockaddr_storage sa;
 	socklen_t sa_len;
@@ -5729,9 +5736,32 @@ static int32_t webif_http_get(IN_ADDR_T ip, int32_t port, const char *path)
 	char *req = NULL;
 	int32_t ret = -1;
 	char host[INET6_ADDRSTRLEN + 8];
+	char auth_line[256];
+
+	auth_line[0] = '\0';
 
 	if(!webif_http_path_ok(path) || port <= 0 || port > 65535 || !IP_ISSET(ip))
 		{ return -1; }
+
+	if(auth_user && auth_user[0])
+	{
+		char userpass[128];
+		char b64[192];
+		int32_t up_len;
+
+		if(!webif_http_no_crlf(auth_user) || !webif_http_no_crlf(auth_pwd))
+			{ return -1; }
+
+		up_len = snprintf(userpass, sizeof(userpass), "%s:%s", auth_user, auth_pwd ? auth_pwd : "");
+		if(up_len <= 0 || up_len >= (int32_t)sizeof(userpass))
+			{ return -1; }
+
+		memset(b64, 0, sizeof(b64));
+		base64_encode(userpass, (size_t)up_len, b64, sizeof(b64));
+		memset(userpass, 0, sizeof(userpass));
+		if(!b64[0] || snprintf(auth_line, sizeof(auth_line), "Authorization: Basic %s\r\n", b64) >= (int32_t)sizeof(auth_line))
+			{ return -1; }
+	}
 
 	memset(&sa, 0, sizeof(sa));
 
@@ -5796,7 +5826,7 @@ static int32_t webif_http_get(IN_ADDR_T ip, int32_t port, const char *path)
 	set_nonblock(fd, false);
 
 	{
-		size_t req_size = cs_strlen(path) + cs_strlen(host) + 64;
+		size_t req_size = cs_strlen(path) + cs_strlen(host) + cs_strlen(auth_line) + 64;
 		int32_t req_len;
 		const char *fmt;
 
@@ -5804,9 +5834,9 @@ static int32_t webif_http_get(IN_ADDR_T ip, int32_t port, const char *path)
 			{ goto out; }
 
 		fmt = (path[0] == '/')
-			? "GET %s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n"
-			: "GET /%s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n";
-		req_len = snprintf(req, req_size, fmt, path, host);
+			? "GET %s HTTP/1.0\r\nHost: %s\r\n%sConnection: close\r\n\r\n"
+			: "GET /%s HTTP/1.0\r\nHost: %s\r\n%sConnection: close\r\n\r\n";
+		req_len = snprintf(req, req_size, fmt, path, host, auth_line);
 		if(req_len <= 0 || req_len >= (int32_t)req_size)
 			{ goto out; }
 
@@ -5845,7 +5875,19 @@ struct webif_sleep_job
 	int32_t port;
 	char usr[64];
 	char *path;
+	char *auth_user;
+	char *auth_pwd;
 };
+
+static void webif_sleep_job_free(struct webif_sleep_job *job)
+{
+	if(!job)
+		{ return; }
+	NULLFREE(job->path);
+	NULLFREE(job->auth_user);
+	NULLFREE(job->auth_pwd);
+	NULLFREE(job);
+}
 
 static void *webif_sleep_thread(void *arg)
 {
@@ -5856,17 +5898,18 @@ static void *webif_sleep_thread(void *arg)
 	cs_strncpy(dest, cs_inet_ntoa(job->dest_ip), sizeof(dest));
 	cs_strncpy(from, cs_inet_ntoa(job->from_ip), sizeof(from));
 
-	if(webif_http_get(job->dest_ip, job->port, job->path) == 0)
+	if(webif_http_get(job->dest_ip, job->port, job->path, job->auth_user, job->auth_pwd) == 0)
 	{
-		cs_log("Client %s sleep zap sent to %s by WebIF from %s", job->usr, dest, from);
+		cs_log("Client %s sleep zap sent to %s by WebIF from %s%s",
+			job->usr, dest, from, job->auth_user ? " (with auth)" : "");
 	}
 	else
 	{
-		cs_log("Client %s sleep zap to %s failed (WebIF from %s)", job->usr, dest, from);
+		cs_log("Client %s sleep zap to %s failed (WebIF from %s)%s",
+			job->usr, dest, from, job->auth_user ? " (with auth)" : "");
 	}
 
-	NULLFREE(job->path);
-	NULLFREE(job);
+	webif_sleep_job_free(job);
 	return NULL;
 }
 
@@ -5889,8 +5932,27 @@ static void webif_sleep_start(struct s_client *cl)
 	job->path = cs_strdup(cfg.http_sleep_zap);
 	if(!job->path)
 	{
-		NULLFREE(job);
+		webif_sleep_job_free(job);
 		return;
+	}
+
+	if(cl->account && cl->account->owifuser && cl->account->owifuser[0])
+	{
+		job->auth_user = cs_strdup(cl->account->owifuser);
+		if(!job->auth_user)
+		{
+			webif_sleep_job_free(job);
+			return;
+		}
+		if(cl->account->owifpwd)
+		{
+			job->auth_pwd = cs_strdup(cl->account->owifpwd);
+			if(!job->auth_pwd)
+			{
+				webif_sleep_job_free(job);
+				return;
+			}
+		}
 	}
 
 	{
@@ -5898,14 +5960,14 @@ static void webif_sleep_start(struct s_client *cl)
 		char from[INET6_ADDRSTRLEN];
 		cs_strncpy(dest, cs_inet_ntoa(job->dest_ip), sizeof(dest));
 		cs_strncpy(from, cs_inet_ntoa(job->from_ip), sizeof(from));
-		cs_log("Client %s sleep zap requested to %s by WebIF from %s", job->usr, dest, from);
+		cs_log("Client %s sleep zap requested to %s by WebIF from %s%s",
+			job->usr, dest, from, job->auth_user ? " (with auth)" : "");
 	}
 
 	if(start_thread("webif sleep zap", webif_sleep_thread, (void *)job, NULL, 1, 1) != 0)
 	{
 		cs_log("Client %s sleep zap failed to start (WebIF from %s)", job->usr, cs_inet_ntoa(job->from_ip));
-		NULLFREE(job->path);
-		NULLFREE(job);
+		webif_sleep_job_free(job);
 	}
 }
 

@@ -2014,6 +2014,8 @@ struct s_auth
 	char			*pwd;
 #ifdef WEBIF
 	char			*description;
+	char			*owifuser;
+	char			*owifpwd;
 #endif
 	int8_t			uniq;
 #ifdef CS_CACHEEX
